@@ -91,7 +91,11 @@ export function registerFileTools(server: McpServer): void {
         if (info.size > MAX_READ_BYTES) {
           throw new ToolError(`'${rel}' is too large (${info.size} bytes). Limit is ${MAX_READ_BYTES}.`);
         }
-        const lines = (await readFile(abs, "utf8")).split(/\r?\n/);
+        const fileContent = await readFile(abs, "utf8");
+        if (fileContent.includes("\u0000")) {
+            throw new ToolError(`'${rel}' does not look like a UTF-8 text file (it may be binary or UTF-16). Cannot read it.`);
+        }
+        const lines = fileContent.replace(/\r?\n$/, "").split(/\r?\n/);
         const total = lines.length;
         const start = start_line ?? 1;
         let end = end_line ?? start + DEFAULT_READ_LINES - 1;
