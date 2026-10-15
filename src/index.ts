@@ -1,3 +1,5 @@
+import "dotenv/config";
+import { requireToken } from "./auth.js";
 import express from "express";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -15,7 +17,7 @@ function buildServer(): McpServer {
 const app = express();
 app.use(express.json());
 
-app.post("/mcp", async (req, res) => {
+app.post("/mcp", requireToken, async (req, res) => {
   try {
     const server = buildServer();
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
@@ -44,8 +46,8 @@ const methodNotAllowed = (_req: express.Request, res: express.Response) => {
     id: null,
   });
 };
-app.get("/mcp", methodNotAllowed);
-app.delete("/mcp", methodNotAllowed);
+app.get("/mcp", requireToken, methodNotAllowed);
+app.delete("/mcp", requireToken, methodNotAllowed);
 
 app.listen(PORT, () => {
   console.log(`MCP server listening on http://localhost:${PORT}/mcp`);
