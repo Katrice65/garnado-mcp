@@ -3,6 +3,7 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { readdir, readFile, writeFile, mkdir, rename, stat, realpath } from "node:fs/promises";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { resolveSafe, SandboxError, WORKSPACE_ROOT } from "../sandbox.js";
 
 // ---- limits and protected paths ----
@@ -14,6 +15,24 @@ export const PROTECTED = new Set([".git", ".env", ".trash"]);
 const MAX_MANY_FILES = 10;
 const MANY_LINES_PER_FILE = 100;
 const MAX_MANY_CHARS = 30_000;
+
+
+// Short fingerprint of a file's content. Changes whenever the content changes.
+function versionOf(content: string): string {
+  return createHash("sha256").update(content, "utf8").digest("hex").slice(0, 12);
+}
+
+// Refuses the edit if the file changed since the agent read it.
+function checkVersion(rel: string, current: string, expected: string | undefined): void {
+  if (expected === undefined) return;
+  const now = versionOf(current);
+  if (now !== expected) {
+    throw new ToolError(
+      `'${rel}' changed since you read it (your version ${expected}, current version ${now}). ` +
+        "Call read_file to see the latest content, then redo your edit using the new version."
+    );
+  }
+}
 
 // ---- result helpers ----
 export const ok = (text: string) => ({ content: [{ type: "text" as const, text }] });
@@ -101,7 +120,7 @@ async function readNumbered(
     .slice(start - 1, end)
     .map((line, i) => `${start + i}: ${line}`)
     .join("\n");
-  let text = `${rel} (lines ${start}-${end} of ${total})\n${body}`;
+  let text = `${rel} (lines ${start}-${end} of ${total}, version ${versionOf(fileContent)})\n${body}`;
   if (truncated || end < total) text += `\n...more lines available. Call read_file with path='${rel}' and start_line=${end + 1} to continue.`;
   return text;
 }
@@ -240,18 +259,21 @@ export function registerFileTools(server: McpServer): void {
       title: "Replace text in file",
       description:
         "Replace one exact piece of text in a file with new text. old_str must appear exactly once; " +
-        "include surrounding lines to make it unique. Prefer this over rewriting a whole file.",
+        "include surrounding lines to make it unique. Pass if_version (from read_file) to refuse the edit " +
+        "if the file changed since you read it. Prefer this over rewriting a whole file.",
       inputSchema: {
         path: z.string().min(1).describe("File path relative to the workspace."),
         old_str: z.string().min(1).describe("Exact text to find, including whitespace."),
         new_str: z.string().max(MAX_WRITE_CHARS).describe("Replacement text. Use an empty string to delete old_str."),
+        if_version: z.string().optional().describe("Version shown by read_file. If the file has changed since, the edit is refused."),
       },
     },
-    async ({ path: p, old_str, new_str }) =>
-      run("str_replace", { path: p, old_str, new_str }, async () => {
+    async ({ path: p, old_str, new_str, if_version }) =>
+      run("str_replace", { path: p, old_str, new_str, if_version }, async () => {
         const abs = await resolveSafe(p);
         const rel = await guard(abs, "edited");
         const content = await readFile(abs, "utf8");
+        checkVersion(rel, content, if_version);
         const first = content.indexOf(old_str);
         if (first === -1) {
           throw new ToolError(`old_str was not found in '${rel}'. Call read_file on the relevant lines and copy the text exactly, including whitespace.`);
@@ -262,7 +284,7 @@ export function registerFileTools(server: McpServer): void {
         }
         const updated = content.slice(0, first) + new_str + content.slice(first + old_str.length);
         await writeFile(abs, updated, "utf8");
-        return ok(`Replaced 1 occurrence in ${rel}.`);
+        return ok(`Replaced 1 occurrence in ${rel} (new version ${versionOf(updated)}).`);
       })
   );
 
