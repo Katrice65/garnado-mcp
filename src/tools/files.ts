@@ -10,17 +10,17 @@ const MAX_LIST_ENTRIES = 200;
 const DEFAULT_READ_LINES = 200;
 const MAX_READ_BYTES = 2_000_000;
 const MAX_WRITE_CHARS = 200_000;
-const PROTECTED = new Set([".git", ".env", ".trash"]);
+export const PROTECTED = new Set([".git", ".env", ".trash"]);
 
 // ---- result helpers ----
-const ok = (text: string) => ({ content: [{ type: "text" as const, text }] });
+export const ok = (text: string) => ({ content: [{ type: "text" as const, text }] });
 const fail = (text: string) => ({ isError: true, content: [{ type: "text" as const, text }] });
 
-class ToolError extends Error {}
+export class ToolError extends Error {}
 
 // Wraps every tool: turns errors into helpful isError messages (never stack traces)
 // and writes one audit-log line per call.
-async function run(tool: string, args: Record<string, unknown>, fn: () => Promise<ReturnType<typeof ok>>) {
+export async function run(tool: string, args: Record<string, unknown>, fn: () => Promise<ReturnType<typeof ok>>) {
   const started = Date.now();
   let result: ReturnType<typeof ok> | ReturnType<typeof fail>;
   try {

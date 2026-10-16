@@ -4,13 +4,16 @@ import express from "express";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { registerFileTools } from "./tools/files.js";
+import { registerSearchTools } from "./tools/search.js";
 import { WORKSPACE_ROOT } from "./sandbox.js";
+
 
 const PORT = Number(process.env.PORT ?? 3000);
 
 function buildServer(): McpServer {
   const server = new McpServer({ name: "garnado-mcp", version: "0.2.0" });
   registerFileTools(server);
+  registerSearchTools(server);
   return server;
 }
 
