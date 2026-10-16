@@ -1,3 +1,4 @@
+import { logCall } from "../audit.js";
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { readdir, readFile, writeFile, mkdir, rename, stat, realpath } from "node:fs/promises";
@@ -17,18 +18,32 @@ const fail = (text: string) => ({ isError: true, content: [{ type: "text" as con
 
 class ToolError extends Error {}
 
-// Wraps every tool so errors become helpful isError messages, never stack traces.
-async function run(fn: () => Promise<ReturnType<typeof ok>>) {
+// Wraps every tool: turns errors into helpful isError messages (never stack traces)
+// and writes one audit-log line per call.
+async function run(tool: string, args: Record<string, unknown>, fn: () => Promise<ReturnType<typeof ok>>) {
+  const started = Date.now();
+  let result: ReturnType<typeof ok> | ReturnType<typeof fail>;
   try {
-    return await fn();
+    result = await fn();
   } catch (err) {
-    if (err instanceof SandboxError || err instanceof ToolError) return fail(err.message);
-    const code = (err as NodeJS.ErrnoException).code;
-    if (code === "ENOENT") return fail("Not found. Call list_files to see what exists.");
-    if (code === "EISDIR") return fail("That path is a directory. Call list_files to see inside it.");
-    if (code === "ENOTDIR") return fail("A part of that path is a file, not a folder.");
-    return fail(`Unexpected error: ${(err as Error).message}`);
+    if (err instanceof SandboxError || err instanceof ToolError) result = fail(err.message);
+    else {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") result = fail("Not found. Call list_files to see what exists.");
+      else if (code === "EISDIR") result = fail("That path is a directory. Call list_files to see inside it.");
+      else if (code === "ENOTDIR") result = fail("A part of that path is a file, not a folder.");
+      else result = fail(`Unexpected error: ${(err as Error).message}`);
+    }
   }
+  const failed = "isError" in result;
+  await logCall({
+    tool,
+    args,
+    ok: !failed,
+    ms: Date.now() - started,
+    error: failed ? result.content[0].text : undefined,
+  });
+  return result;
 }
 
 // Returns the path relative to the workspace, and refuses protected locations.
@@ -56,7 +71,7 @@ export function registerFileTools(server: McpServer): void {
       },
     },
     async ({ path: dir }) =>
-      run(async () => {
+      run("list_files", { path: dir }, async () => {
         const abs = await resolveSafe(dir && dir.length > 0 ? dir : ".");
         const entries = (await readdir(abs, { withFileTypes: true })).filter((e) => !PROTECTED.has(e.name));
         if (entries.length === 0) return ok("(empty)");
@@ -83,7 +98,7 @@ export function registerFileTools(server: McpServer): void {
       },
     },
     async ({ path: p, start_line, end_line }) =>
-      run(async () => {
+      run("read_file", { path: p, start_line, end_line }, async () => {
         const abs = await resolveSafe(p);
         const rel = await guard(abs, "read");
         const info = await stat(abs);
@@ -132,7 +147,7 @@ export function registerFileTools(server: McpServer): void {
       },
     },
     async ({ path: p, content, overwrite }) =>
-      run(async () => {
+      run("write_file", { path: p, content, overwrite }, async () => {
         const abs = await resolveSafe(p);
         const rel = await guard(abs, "written");
         let exists = true;
@@ -167,7 +182,7 @@ export function registerFileTools(server: McpServer): void {
       },
     },
     async ({ path: p, old_str, new_str }) =>
-      run(async () => {
+      run("str_replace", { path: p, old_str, new_str }, async () => {
         const abs = await resolveSafe(p);
         const rel = await guard(abs, "edited");
         const content = await readFile(abs, "utf8");
@@ -199,7 +214,7 @@ export function registerFileTools(server: McpServer): void {
       },
     },
     async ({ path: p, confirm }) =>
-      run(async () => {
+      run("delete_file", { path: p, confirm }, async () => {
         const abs = await resolveSafe(p);
         const rel = await guard(abs, "deleted");
         if (confirm !== true) {
