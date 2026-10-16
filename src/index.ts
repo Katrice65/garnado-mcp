@@ -5,6 +5,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { registerFileTools } from "./tools/files.js";
 import { registerSearchTools } from "./tools/search.js";
+import { registerGitTools } from "./tools/git.js";
 import { WORKSPACE_ROOT } from "./sandbox.js";
 
 
@@ -14,6 +15,7 @@ function buildServer(): McpServer {
   const server = new McpServer({ name: "garnado-mcp", version: "0.2.0" });
   registerFileTools(server);
   registerSearchTools(server);
+  registerGitTools(server);
   return server;
 }
 
