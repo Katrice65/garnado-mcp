@@ -46,13 +46,21 @@ export async function run(tool: string, args: Record<string, unknown>, fn: () =>
   return result;
 }
 
+const HANDOFF_FILES = new Set(["PROJECT_STATE.MD", "PLAN_LOG.MD", "DECISIONS.MD", "CHECKPOINTS"]);
+
 // Returns the path relative to the workspace, and refuses protected locations.
+// Windows paths are case-insensitive, so names are compared in a single case.
 async function guard(abs: string, action: string): Promise<string> {
   const realRoot = await realpath(WORKSPACE_ROOT);
   const rel = path.relative(realRoot, abs);
   const first = rel.split(path.sep)[0];
-  if (PROTECTED.has(first)) {
+  if (PROTECTED.has(first.toLowerCase())) {
     throw new ToolError(`'${rel}' is protected and cannot be ${action}.`);
+  }
+  if (action !== "read" && HANDOFF_FILES.has(first.toUpperCase())) {
+    throw new ToolError(
+      `'${rel}' is a handoff file and cannot be ${action} directly. Use append_plan_log or save_checkpoint instead.`
+    );
   }
   return rel;
 }

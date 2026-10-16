@@ -6,6 +6,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { registerFileTools } from "./tools/files.js";
 import { registerSearchTools } from "./tools/search.js";
 import { registerGitTools } from "./tools/git.js";
+import { registerHandoffTools } from "./tools/handoff.js";
 import { WORKSPACE_ROOT } from "./sandbox.js";
 
 
@@ -16,6 +17,7 @@ function buildServer(): McpServer {
   registerFileTools(server);
   registerSearchTools(server);
   registerGitTools(server);
+  registerHandoffTools(server);
   return server;
 }
 
