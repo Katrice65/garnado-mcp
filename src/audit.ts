@@ -1,5 +1,6 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import path from "node:path";
+import { roleStore } from "./roles.js";
 
 const LOG_DIR = path.resolve(process.cwd(), "logs");
 const LOG_FILE = path.join(LOG_DIR, "audit.jsonl");
@@ -31,6 +32,7 @@ export async function logCall(entry: AuditEntry): Promise<void> {
     await mkdir(LOG_DIR, { recursive: true });
     const line = JSON.stringify({
       ts: new Date().toISOString(),
+      role: roleStore.getStore() ?? "unknown",
       tool: entry.tool,
       args: summarize(entry.args),
       ok: entry.ok,
