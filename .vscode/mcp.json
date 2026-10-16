@@ -1,0 +1,19 @@
+{
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "garnado-token",
+      "description": "Garnado MCP bearer token",
+      "password": true
+    }
+  ],
+  "servers": {
+    "garnado-mcp": {
+      "type": "http",
+      "url": "https://ripping-salaried-lapped.ngrok-free.dev/mcp",
+      "headers": {
+        "Authorization": "Bearer ${input:garnado-token}"
+      }
+    }
+  }
+}

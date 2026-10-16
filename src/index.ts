@@ -17,7 +17,7 @@ function buildServer(): McpServer {
 const app = express();
 app.use(express.json());
 
-app.post("/mcp", requireToken, async (req, res) => {
+app.post(["/mcp", "/mcp/:secret"], requireToken, async (req, res) => {
   try {
     const server = buildServer();
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
@@ -46,8 +46,8 @@ const methodNotAllowed = (_req: express.Request, res: express.Response) => {
     id: null,
   });
 };
-app.get("/mcp", requireToken, methodNotAllowed);
-app.delete("/mcp", requireToken, methodNotAllowed);
+app.get(["/mcp", "/mcp/:secret"], requireToken, methodNotAllowed);
+app.delete(["/mcp", "/mcp/:secret"], requireToken, methodNotAllowed);
 
 app.listen(PORT, () => {
   console.log(`MCP server listening on http://localhost:${PORT}/mcp`);
