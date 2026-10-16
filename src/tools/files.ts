@@ -11,6 +11,9 @@ const DEFAULT_READ_LINES = 200;
 const MAX_READ_BYTES = 2_000_000;
 const MAX_WRITE_CHARS = 200_000;
 export const PROTECTED = new Set([".git", ".env", ".trash"]);
+const MAX_MANY_FILES = 10;
+const MANY_LINES_PER_FILE = 100;
+const MAX_MANY_CHARS = 30_000;
 
 // ---- result helpers ----
 export const ok = (text: string) => ({ content: [{ type: "text" as const, text }] });
@@ -64,7 +67,44 @@ async function guard(abs: string, action: string): Promise<string> {
   }
   return rel;
 }
-
+// Shared by read_file and read_many_files: returns numbered lines for one file.
+async function readNumbered(
+  p: string,
+  start_line: number | undefined,
+  end_line: number | undefined,
+  maxLines: number
+): Promise<string> {
+  const abs = await resolveSafe(p);
+  const rel = await guard(abs, "read");
+  const info = await stat(abs);
+  if (!info.isFile()) throw new ToolError(`'${rel}' is not a file.`);
+  if (info.size > MAX_READ_BYTES) {
+    throw new ToolError(`'${rel}' is too large (${info.size} bytes). Limit is ${MAX_READ_BYTES}.`);
+  }
+  const fileContent = await readFile(abs, "utf8");
+  if (fileContent.includes("\u0000")) {
+    throw new ToolError(`'${rel}' does not look like a UTF-8 text file (it may be binary or UTF-16). Cannot read it.`);
+  }
+  const lines = fileContent.replace(/\r?\n$/, "").split(/\r?\n/);
+  const total = lines.length;
+  const start = start_line ?? 1;
+  let end = end_line ?? start + maxLines - 1;
+  if (start > total) throw new ToolError(`start_line ${start} is past the end of the file (${total} lines).`);
+  if (end < start) throw new ToolError("end_line must be greater than or equal to start_line.");
+  let truncated = false;
+  if (end - start + 1 > maxLines) {
+    end = start + maxLines - 1;
+    truncated = true;
+  }
+  end = Math.min(end, total);
+  const body = lines
+    .slice(start - 1, end)
+    .map((line, i) => `${start + i}: ${line}`)
+    .join("\n");
+  let text = `${rel} (lines ${start}-${end} of ${total})\n${body}`;
+  if (truncated || end < total) text += `\n...more lines available. Call read_file with path='${rel}' and start_line=${end + 1} to continue.`;
+  return text;
+}
 export function registerFileTools(server: McpServer): void {
   // ---------- list_files ----------
   server.registerTool(
@@ -98,7 +138,8 @@ export function registerFileTools(server: McpServer): void {
       title: "Read file",
       description:
         `Read a text file with line numbers. Returns at most ${DEFAULT_READ_LINES} lines per call; ` +
-        "use start_line and end_line to read a specific range instead of the whole file.",
+        "use start_line and end_line to read a specific range instead of the whole file. " +
+        "To read several files at once, use read_many_files.",
       inputSchema: {
         path: z.string().min(1).describe("File path relative to the workspace."),
         start_line: z.number().int().min(1).optional().describe("First line to read (1-based). Default 1."),
@@ -106,37 +147,54 @@ export function registerFileTools(server: McpServer): void {
       },
     },
     async ({ path: p, start_line, end_line }) =>
-      run("read_file", { path: p, start_line, end_line }, async () => {
-        const abs = await resolveSafe(p);
-        const rel = await guard(abs, "read");
-        const info = await stat(abs);
-        if (!info.isFile()) throw new ToolError(`'${rel}' is not a file.`);
-        if (info.size > MAX_READ_BYTES) {
-          throw new ToolError(`'${rel}' is too large (${info.size} bytes). Limit is ${MAX_READ_BYTES}.`);
+      run("read_file", { path: p, start_line, end_line }, async () =>
+        ok(await readNumbered(p, start_line, end_line, DEFAULT_READ_LINES))
+      )
+  );
+
+  // ---------- read_many_files ----------
+  server.registerTool(
+    "read_many_files",
+    {
+      title: "Read many files",
+      description:
+        `Read up to ${MAX_MANY_FILES} text files in ONE call (first ${MANY_LINES_PER_FILE} lines of each, numbered). ` +
+        "Use this instead of several read_file calls. A bad path shows an error for that file only. " +
+        "For more lines of one file, use read_file with start_line.",
+      inputSchema: {
+        paths: z
+          .array(z.string().min(1))
+          .min(1)
+          .max(MAX_MANY_FILES)
+          .describe(`File paths relative to the workspace (1 to ${MAX_MANY_FILES}).`),
+      },
+    },
+    async ({ paths }) =>
+      run("read_many_files", { paths }, async () => {
+        const parts: string[] = [];
+        let total = 0;
+        for (const p of paths) {
+          let part: string;
+          if (total >= MAX_MANY_CHARS) {
+            part = `${p}: SKIPPED, output limit reached. Call read_file for this file.`;
+          } else {
+            try {
+              part = await readNumbered(p, undefined, undefined, MANY_LINES_PER_FILE);
+            } catch (err) {
+              const code = (err as NodeJS.ErrnoException).code;
+              const msg =
+                err instanceof SandboxError || err instanceof ToolError
+                  ? err.message
+                  : code === "ENOENT"
+                    ? "Not found. Call list_files to see what exists."
+                    : (err as Error).message;
+              part = `${p}: ERROR: ${msg}`;
+            }
+          }
+          total += part.length;
+          parts.push(part);
         }
-        const fileContent = await readFile(abs, "utf8");
-        if (fileContent.includes("\u0000")) {
-            throw new ToolError(`'${rel}' does not look like a UTF-8 text file (it may be binary or UTF-16). Cannot read it.`);
-        }
-        const lines = fileContent.replace(/\r?\n$/, "").split(/\r?\n/);
-        const total = lines.length;
-        const start = start_line ?? 1;
-        let end = end_line ?? start + DEFAULT_READ_LINES - 1;
-        if (start > total) throw new ToolError(`start_line ${start} is past the end of the file (${total} lines).`);
-        if (end < start) throw new ToolError("end_line must be greater than or equal to start_line.");
-        let truncated = false;
-        if (end - start + 1 > DEFAULT_READ_LINES) {
-          end = start + DEFAULT_READ_LINES - 1;
-          truncated = true;
-        }
-        end = Math.min(end, total);
-        const body = lines
-          .slice(start - 1, end)
-          .map((line, i) => `${start + i}: ${line}`)
-          .join("\n");
-        let text = `${rel} (lines ${start}-${end} of ${total})\n${body}`;
-        if (truncated || end < total) text += `\n...more lines available. Call read_file with start_line=${end + 1} to continue.`;
-        return ok(text);
+        return ok(parts.join("\n\n"));
       })
   );
 

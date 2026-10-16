@@ -7,6 +7,7 @@ export type Role = "planner" | "builder";
 const PLANNER_TOOLS = new Set([
   "list_files",
   "read_file",
+  "read_many_files",
   "search_code",
   "git_status",
   "git_diff",
