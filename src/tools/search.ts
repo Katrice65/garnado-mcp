@@ -13,7 +13,6 @@ const MAX_FILE_BYTES = 1_000_000;
 const MAX_LINE_CHARS = 200;
 const SKIP_DIRS = new Set(["node_modules", "dist"]);
 
-// Walks a folder tree. Skips protected folders and symlinks (so a search can never leave the workspace).
 async function* walk(dir: string): AsyncGenerator<string> {
   const entries = await readdir(dir, { withFileTypes: true });
   entries.sort((a, b) => a.name.localeCompare(b.name));

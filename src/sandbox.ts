@@ -26,8 +26,7 @@ export async function resolveSafe(
   const realRoot = await realpath(root);
   const candidate = path.resolve(realRoot, userPath);
 
-  // Resolve symlinks on the deepest part of the path that already exists,
-  // so a symlink pointing outside the workspace is caught.
+ 
   let existing = candidate;
   let tail = "";
   for (;;) {

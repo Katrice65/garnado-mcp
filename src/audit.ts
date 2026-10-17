@@ -26,7 +26,6 @@ function summarize(args: Record<string, unknown>): Record<string, unknown> {
   return out;
 }
 
-// One JSON object per line. A logging failure must never break a tool call.
 export async function logCall(entry: AuditEntry): Promise<void> {
   try {
     await mkdir(LOG_DIR, { recursive: true });

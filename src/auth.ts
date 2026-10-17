@@ -19,11 +19,9 @@ export function requireToken(req: Request, res: Response, next: NextFunction): v
     return;
   }
 
-  // What the caller presented: a bearer header, or a secret in the URL path (/mcp/<secret>).
   const presentedHeader = /^Bearer (.+)$/.exec(req.headers.authorization ?? "")?.[1];
   const presentedPath = typeof req.params.secret === "string" ? req.params.secret : undefined;
 
-  // Each credential maps to exactly one role. Planner credentials are optional.
   const credentials: Credential[] = [
     { role: "builder", kind: "header", secret: builderToken, minLength: 16 },
     { role: "builder", kind: "url", secret: process.env.MCP_URL_SECRET, minLength: 32 },
