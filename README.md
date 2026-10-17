@@ -226,3 +226,16 @@ ecosystem.config.cjs   pm2 config (server + ngrok tunnel)
 - **Server says "misconfigured" (500):** `MCP_TOKEN` is missing or too short, or appears twice in `.env`.
 - **Port 3000 in use:** do not run `npm run dev` while pm2 is running the server.
 - **A tool you just added is missing for the planner:** add its name to `PLANNER_TOOLS` in `src/roles.ts`, rebuild, and restart.
+
+## Demo results (M5)
+
+The server was tested with claude.ai on one multi-step task (build, test and verify a small Node.js todo CLI) across four builder sessions.
+
+| Session | Calls | Failures | Summary |
+|---|---|---|---|
+| 1 | 8 | 0 | Plan logged, todo.js and README written, committed, checkpoint saved |
+| 2 | 8 | 0 | Read before writing, tests added, committed, checkpoint saved |
+| 3 | 7 | 0 | Module-type failure fixed after a human test run, decision logged |
+| 4 | 7 | 0 | Verified result recorded (26 of 26 tests pass) |
+
+Every session started with get_handoff and ended with a checkpoint. The planner role was checked by calling the server directly: it lists 10 tools and write_file is refused.
